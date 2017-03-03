@@ -1,4 +1,4 @@
-# echo-keyvalue
+# Echo
 A scalable and efficient key-value store for non-volatile memory (NVM). 
 
 ####Exploring storage class memory with key value stores. 
