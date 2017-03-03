@@ -9,13 +9,7 @@ Interactions of NVM/FLASH with Operating Systems and Workloads (INFLOW '13)
 ~~~
     $ cd src/
     $ ./build
-~~~
-
-# For help :
-
-~~~
-    $ cd src/
-    $ ./run -h
+    $ ./run -h                                  [For help]
 ~~~
 
 # To run :
@@ -36,7 +30,7 @@ make sure you have debugfs mounted in Linux.
     debugfs on /sys/kernel/debug type debugfs (rw,relatime)
     
     $ sudo cd /sys/kernel/debug
-    $ sudo echo 128000 > buffer_size_kb         [Allocate enough buffer to hold traces]
+    $ sudo echo 128000 > buffer_size_kb         [128MB. Allocate enough buffer to hold traces]
     $ cat trace_pipe                            [Redirect output of pipe to any file for storage]
     
     Go back to echo/:
