@@ -2,7 +2,8 @@
 A scalable and efficient key-value store for non-volatile memory (NVM). 
 
 ####Exploring storage class memory with key value stores. 
-Katelin A. Bailey, Peter Hornyack, Luis Ceze, Steven D. Gribble, and Henry M. Levy
+Katelin A. Bailey, Peter Hornyack, Luis Ceze, Steven D. Gribble, and Henry M. Levy.
+
 Interactions of NVM/FLASH with Operating Systems and Workloads (INFLOW '13)
 
 # To build
