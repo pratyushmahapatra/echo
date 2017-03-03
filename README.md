@@ -21,6 +21,7 @@ Interactions of NVM/FLASH with Operating Systems and Workloads (INFLOW '13)
 ~~~
 
 Echo will create a persistent heap in /dev/shm defined by the macro PERSISTENT_HEAP.
+Ensure that you have at least 1.00 GB of space for the heap.
 
 To collect the trace of accesses to persistent memory,
 make sure you have debugfs mounted in Linux.
