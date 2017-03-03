@@ -6,7 +6,7 @@ Katelin A. Bailey, Peter Hornyack, Luis Ceze, Steven D. Gribble, and Henry M. Le
 
 Interactions of NVM/FLASH with Operating Systems and Workloads (INFLOW '13)
 
-# To build
+# To build :
 ~~~
     $ cd src/
     $ ./build
