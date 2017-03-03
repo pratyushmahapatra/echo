@@ -11,8 +11,9 @@ rm -f ${MALLOC_LIBS}/pkgconfig/libprofiler*
 rm -f ${MALLOC_LIBS}/pkgconfig/libtcmalloc*
 
 cd ${GPERF_DIR}
-make distclean
+autoconf
 ./configure --prefix=${MALLOC_DIR} --enable-minimal
+make distclean
 make
 make install
 
