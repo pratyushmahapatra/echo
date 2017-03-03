@@ -1,20 +1,27 @@
 # echo-keyvalue
 A scalable and efficient key-value store for non-volatile memory (NVM). 
 
-Exploring storage class memory with key value stores. 
+####Exploring storage class memory with key value stores. 
 Katelin A. Bailey, Peter Hornyack, Luis Ceze, Steven D. Gribble, and Henry M. Levy
-Workshop on Interactions of NVM/FLASH with Operating Systems and Workloads (INFLOW '13)
+Interactions of NVM/FLASH with Operating Systems and Workloads (INFLOW '13)
 
 # To build
 ~~~
-    $ cd echo/src
+    $ cd src/
     $ ./build
+~~~
+
+# For help :
+
+~~~
+    $ cd src/
+    $ ./run -h
 ~~~
 
 # To run :
 
 ~~~
-    $ cd echo/src
+    $ cd src/
     $ ./run --small                             [can pass --med or --large for bigger workloads]
 ~~~
 
@@ -34,6 +41,6 @@ make sure you have debugfs mounted in Linux.
     
     Go back to echo/:
     
-    $ cd echo/src
+    $ cd src/
     $ sudo ./run --small --trace                [Need to be root to collect trace]
 ~~~
