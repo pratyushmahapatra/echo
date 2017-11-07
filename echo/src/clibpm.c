@@ -29,6 +29,7 @@ void pfree(void *p) {
 unsigned int get_next_pp() {
   pthread_mutex_lock(&pmp_mutex);
   unsigned int ret = sp->itr;
+  PM_READ (sp->itr);
   PM_EQU((sp->itr), (sp->itr+1));
   pthread_mutex_unlock(&pmp_mutex);
   return ret;
@@ -117,13 +118,17 @@ void pmemalloc_display() {
           "----------------------------------------------------------\n");
   while (1) {
     sz = clp->size & ~PMEM_STATE_MASK;
+    PM_READ (clp->size);
     prev_sz = clp->prevsize;
     state = clp->size & PMEM_STATE_MASK;
+    PM_READ (clp->size);
 
     fprintf(stdout, "%lu (%d)(%p)(%lu) -> ", sz, state, (struct clump *)REL_PTR(clp), prev_sz);
 
-    if (clp->size == 0)
+    if (clp->size == 0) {
+    PM_READ (clp->size);
       break;
+    }
 
     clp = (struct clump *) ((uintptr_t) clp + sz);
   }
@@ -141,6 +146,7 @@ void pmemalloc_validate(struct clump* clp) {
   struct clump* next;
 
   sz = clp->size & ~PMEM_STATE_MASK;
+  PM_READ (clp->size);
   if (sz == 0)
     return;
 
@@ -163,11 +169,15 @@ void check() {
       (struct clump *)ABS_PTR(
           (struct clump *) (pmem_orig_size & ~(PMEM_CHUNK_SIZE - 1)) - PMEM_CHUNK_SIZE);
 
-  if (clp->size == 0)
+  if (clp->size == 0) {
+    PM_READ (clp->size);
     FATAL("no clumps found");
+  }
 
   while (clp->size) {
+    PM_READ (clp->size);
     size_t sz = clp->size & ~PMEM_STATE_MASK;
+    PM_READ (clp->size);
     clp = (struct clump *) ((uintptr_t) clp + sz);
   }
 
@@ -192,8 +202,11 @@ static void pmemalloc_recover(void *pmp) {
   clp = PMEM(pmp, (struct clump *)PMEM_CLUMP_OFFSET);
 
   while (clp->size) {
+    PM_READ (clp->size);
     size_t sz = clp->size & ~PMEM_STATE_MASK;
+    PM_READ (clp->size);
     int state = clp->size & PMEM_STATE_MASK;
+    PM_READ (clp->size);
 
     DEBUG("[0x%lx]clump size %lx state %d", OFF(pmp, clp), sz, state);
 
@@ -268,8 +281,11 @@ static void pmemalloc_coalesce_free(void *pmp) {
   clp = PMEM(pmp, (struct clump *)PMEM_CLUMP_OFFSET);
 
   while (clp->size) {
+    PM_READ (clp->size);
     size_t sz = clp->size & ~PMEM_STATE_MASK;
+    PM_READ (clp->size);
     int state = clp->size & PMEM_STATE_MASK;
+    PM_READ (clp->size);
 
     DEBUG("[0x%lx]clump size %lx state %d", OFF(pmp, clp), sz, state);
 
@@ -444,9 +460,12 @@ void *pmemalloc_reserve(size_t size) {
   /* first fit */
   check:  //unsigned int itr = 0;
   while (clp->size) {
+    PM_READ (clp->size);
 //    DEBUG("************** itr :: %lu ", itr++);
     size_t sz = clp->size & ~PMEM_STATE_MASK;
+    PM_READ (clp->size);
     int state = clp->size & PMEM_STATE_MASK;
+    PM_READ (clp->size);
     DEBUG("size : %lu state : %d", sz, state);
 
     if (nsize <= sz) {
@@ -545,6 +564,7 @@ void pmemalloc_free(void *abs_ptr_) {
 
   clp = (struct clump *) ((uintptr_t) abs_ptr_ - PMEM_CHUNK_SIZE);
   sz = clp->size & ~PMEM_STATE_MASK;
+  PM_READ (clp->size);
   DEBUG("size=%lu", sz);
 
   lastfree = (struct clump *) ((uintptr_t) clp + sz);
@@ -555,13 +575,16 @@ void pmemalloc_free(void *abs_ptr_) {
   firstfree = (struct clump *) ((uintptr_t) clp - clp->prevsize);
   //DEBUG("validate firstfree %p", REL_PTR(firstfree));
   if (firstfree == clp
-      || ((firstfree->size & PMEM_STATE_MASK) != PMEM_STATE_FREE))
+      || ((firstfree->size & PMEM_STATE_MASK) != PMEM_STATE_FREE)) {
+    PM_READ (firstfree->size);
     first = 0;
+  }
 
   if (first && last) {
     DEBUG("******* F C L ");
 
     size_t first_sz = firstfree->size & ~PMEM_STATE_MASK;
+    PM_READ (firstfree->size);
     size_t last_sz = lastfree->size & ~PMEM_STATE_MASK;
     csize = first_sz + sz + last_sz;
     PM_EQU((firstfree->size), (csize | PMEM_STATE_FREE));
@@ -578,6 +601,7 @@ void pmemalloc_free(void *abs_ptr_) {
     DEBUG("******* F C  ");
 
     size_t first_sz = firstfree->size & ~PMEM_STATE_MASK;
+    PM_READ (firstfree->size);
     csize = first_sz + sz;
     PM_EQU((firstfree->size), (csize | PMEM_STATE_FREE));
     pmem_persist(firstfree, sizeof(*firstfree), 0);

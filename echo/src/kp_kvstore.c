@@ -529,6 +529,7 @@ void kp_ht_entry_destroy(kp_ht_entry **entry, bool use_nvm)
 
 	if (*entry != NULL) {
 		if ((*entry)->key) {
+                        PM_READ((*entry)->key);
 			kp_debug("freeing key in kp_ht_entry!: %s\n", (*entry)->key);
 			kp_free((void **)&((*entry)->key), use_nvm);
 		}
@@ -791,6 +792,7 @@ bool kp_ht_process_stats(void *entry_ptr, void *data)
 
 	stats->vt_touched++;
 	stats->total_versions_alive += vt->ver_count;
+	PM_READ (vt->ver_count);
 	stats->avg_vt_versions =  stats->total_versions_alive/
 		(float)stats->vt_touched;
 
@@ -860,6 +862,7 @@ bool kp_cr_is_finalized(kp_commit_record *cr)
 	 * with the state_lock mutex held, the actual write to cr->state should
 	 * be atomic (just a mov instruction), so we always see a consistent
 	 * state of the commit record here even though we don't have the lock. */
+	PM_READ(cr->state);
 	return (cr->state == COMMITTED || cr->state == ABORTED);
 }
 
@@ -974,6 +977,7 @@ commit_state kp_commit_state_transition(kp_commit_record *cr,
 	if (!is_owner && !prev_is_finalized && 
 			(cr->state == COMMITTED || cr->state == ABORTED ||
 			 cr->state == WAIT_TO_ABORT)) {
+		PM_READ(cr->state);
 		kp_debug2("setting skip_transition = true to optimize this "
 				"transition function; somebody has already set this "
 				"commit record's state to %s\n",
@@ -1066,6 +1070,7 @@ commit_state kp_commit_state_transition(kp_commit_record *cr,
 	
 		new_state = UNDEFINED;
 		old_state = cr->state;
+		PM_READ(cr->state);
 		if (!success) {  //failed transition
 			/* Failed transitions: we'll either transition to ABORTED or
 			 * WAIT_TO_ABORT!!! (and sometimes we'll be UNDEFINED for
@@ -1425,6 +1430,7 @@ commit_state kp_commit_state_transition(kp_commit_record *cr,
 	 * again. */
 	/* Remember: while loop, not if statement!! (see man page for wait). */
 	while (cr->state == WAIT_TO_COMMIT || cr->state == WAIT_TO_ABORT) {
+	  PM_READ(cr->state);
 		if (!is_owner) {
 			/* I grepped for this debug statement after adding this if
 			 * block, and it actually is hit every once in a while. Looks
@@ -1469,6 +1475,7 @@ commit_state kp_commit_state_transition(kp_commit_record *cr,
 	 * I learned the hard way with the stupid hash table what can happen if
 	 * you don't copy before returning. */
 	ret_state = cr->state;
+	PM_READ(cr->state);
 
 	if (!skip_transition && detect_conflicts) {
 		kp_mutex_unlock("cr->state_lock for transition", cr->state_lock);
@@ -1649,10 +1656,12 @@ void kp_vt_sanity_check_lengths(kp_vt *vt)
 {
 #ifdef KP_ASSERT
 	if (vt->len != vector_count(vt->vtes)) {  //sanity check:
+		PM_READ (vt->len);
 		kp_die("vt->len != vector_count(vt->vtes): len=%ju, count=%llu\n",
 			  vt->len, vector_count(vt->vtes));
 	}
 	if (vt->len == UINT64_MAX) {
+		PM_READ (vt->len);
 		kp_die("vt->len is UINT64_MAX\n");
 	}
 #endif
@@ -1745,6 +1754,7 @@ void kp_vte_destroy(kp_vte **vte, bool use_nvm)
 		kp_flush_range(&((*vte)->state), sizeof(ds_state), use_nvm);
 
 		if ((*vte)->value) {
+			PM_READ( (*vte)->value);
 			kp_debug2("(*vte)->value is non-NULL, so freeing vte's value\n");
 			kp_free((void **)&((*vte)->value), use_nvm);  //sets (*vte)->value to NULL
 			  //de-const!
@@ -1832,6 +1842,7 @@ bool kp_vte_validator(const void *vteptr)
 			"validator\n", cr->begin_snapshot, cr->end_snapshot,
 			commit_state_to_string(cr->state),
 			cr->state == COMMITTED ? "true" : "false");
+	PM_READ (cr->state);
 	return (cr->state == COMMITTED);
 }
 
@@ -1891,6 +1902,7 @@ int kp_vt_get_value(const kp_vt *vt, uint64_t lvn, uint64_t snapshot,
 		 * as well, and we should return "key not found" long before we
 		 * reach this code.
 		 */
+		PM_READ (vt->len);
 		kp_die("version table is empty, len=0; this should never happen, "
 				"I think.\n");
 		return -1;
@@ -1915,6 +1927,7 @@ int kp_vt_get_value(const kp_vt *vt, uint64_t lvn, uint64_t snapshot,
 		kp_warn("is this code (get-by-lvn) dead? If not, should probably "
 				"only be alive for local, not for master!\n");
 		if (lvn > vt->ver_count - 1) {  //don't forget -1!
+			PM_READ (vt->ver_count);
 			kp_debug("invalid lvn (%ju) for key %s: ver_count is %ju\n",
 					lvn, vt->key, vt->ver_count);
 			return 2;
@@ -1977,6 +1990,8 @@ int kp_vt_get_value(const kp_vt *vt, uint64_t lvn, uint64_t snapshot,
 					"version (neither lvn nor snapshot specified\n");
 		}
 		if (vt->len > vt->ver_count) {  //sanity check
+			PM_READ (vt->ver_count);
+			PM_READ (vt->len);
 			kp_die("internal error: vt->len has been set to invalid "
 					"value %ju, vt->ver_count is %ju\n",
 					vt->len, vt->ver_count);
@@ -2119,6 +2134,7 @@ int kp_vt_append_value(kp_vt *vt, const void *value, size_t size,
 	 * not been incremented yet; see below).
 	 * Use 0 for the initial ttl; ttls will be dealt with later. */
 	new_lvn = vt->ver_count;
+	PM_READ (vt->ver_count);
 	new_ttl = 0;
 
 	/* Finally, create the new vte. In the normal case (versioning enabled),
@@ -2144,6 +2160,7 @@ int kp_vt_append_value(kp_vt *vt, const void *value, size_t size,
 	 * defined), or in the DISABLE_VERSIONING case when this is the _first_
 	 * time we're putting to this key. */
 	if (!hack_to_skip_versioning || vt->len == 0) {
+		PM_READ (vt->len);
 		/* Now, append the new vte to the vector of vtes.
 		 * IMPORTANT: in the future, if we try to allow simultaneous
 		 * merges, then we won't be able to just append here; we'll have
@@ -2168,7 +2185,9 @@ int kp_vt_append_value(kp_vt *vt, const void *value, size_t size,
 		/* Increment counts only after value has been successfully added.
 		 * Deletions count as a version. */
 		vt->ver_count++;
+		PM_READ (vt->ver_count);
 		vt->len++;
+		PM_READ (vt->len);
 		//kp_vt_sanity_check_lengths(vt);
 #ifdef KP_DEBUG
 		vector_get(vt->vtes, vt->len-1, (void **)(&get_vte_debug));
@@ -2338,6 +2357,7 @@ int kp_vt_insert_value(kp_vt *vt, const void *value, size_t size,
 	}
 #ifdef KP_ASSERT
 	if (new_snapshot != cr->end_snapshot) {
+		PM_READ (cr->end_snapshot);
 		kp_die("unexpected: new_snapshot=%ju, but cr->end_snapshot=%ju\n",
 				new_snapshot, cr->end_snapshot);
 	}
@@ -2363,6 +2383,7 @@ int kp_vt_insert_value(kp_vt *vt, const void *value, size_t size,
 	 * not been incremented yet; see below).
 	 * Use 0 for the initial ttl; ttls will be dealt with later... */
 	new_lvn = vt->ver_count;
+	PM_READ (vt->ver_count);
 	new_ttl = 0;
 
 	/* Create the new vte. We pass the new_snapshot and cr (commit record)
@@ -2694,6 +2715,7 @@ uint64_t kp_vt_decrement_ttl(kp_vt *vt, uint64_t gvn)
 				"vt->len=%ju\n", bytes_collected, vt->len);
 
 		if (vt->len == 0) {
+		PM_READ(vt->len);
 			//todo: change this warning to a debug...
 			kp_warn("vt->len hit 0; not freeing vt here, caller should "
 					"also check this condition and free vt!\n");
@@ -2955,15 +2977,18 @@ void kp_kvstore_destroy_internal(kp_kvstore **kv, bool free_values)
 			kp_debug("hash_free((*kv)->ht) completed\n");
 		}
 		if ((*kv)->gc) {  //will be NULL for local store
+			PM_READ ((*kv)->gc);
 			kp_gc_destroy(&((*kv)->gc));
 		}
 		if ((*kv)->commit_log) {
+			PM_READ ( (*kv)->commit_log);
 			vector_destroy(&((*kv)->commit_log));
 		}
 		if ((*kv)->rwlock) {
 			kp_rwlock_destroy("(*kv)->rwlock", &((*kv)->rwlock));
 		}
 		if ((*kv)->snapshot_lock) {
+			PM_READ ((*kv)->snapshot_lock);
 			kp_mutex_destroy("(*kv)->snapshot_lock", &((*kv)->snapshot_lock));
 		}
 
@@ -3552,6 +3577,7 @@ int kp_put_local(kp_kvstore *kv, const kp_ht_entry *lookup_entry,
 			} else {  //success
 				put_succeeded = true;  //don't re-loop
 				kv->pairs_count++;  //we're still locked, so no race conditions
+				PM_READ (kv->pairs_count);
 				  //CHECK: is this the right place to increment this??
 				  //  I think pairs_count can probably just be eliminated...
 				kp_debug("hash_insert_if_absent(key=%s) succeeded, incremented "
@@ -4019,6 +4045,7 @@ uint64_t kp_vt_delete_version(kp_vt *vt, uint64_t idx)
 	}
 	//kp_vt_sanity_check_lengths(vt);
 	if (idx > vt->len - 1) {
+	PM_READ (vt->len);
 		kp_error("invalid idx=%ju, vt len=%ju\n", idx, vt->len);
 	}
 
@@ -4083,6 +4110,7 @@ uint64_t kp_vt_delete_version(kp_vt *vt, uint64_t idx)
 #endif
 
 	vt->len--;
+	PM_READ (vt->len);
 	kp_debug("decremented vt->len, now = %ju\n", vt->len);
 	//kp_vt_sanity_check_lengths(vt);
 
@@ -4906,6 +4934,8 @@ int kp_kvstore_create(kp_kvstore **kv, bool is_master,
 			(*kv)->is_master ? "true" : "false", (*kv)->use_nvm ? "true" : "false");
 #ifdef KP_ASSERT
 	if ((*kv)->is_master && ! (*kv)->use_nvm) {
+		PM_READ ((*kv)->is_master);
+		PM_READ ((*kv)->use_nvm);
 		kp_warn("use_nvm is false: double-check this implementation!\n");
 	}
 #endif
@@ -5112,6 +5142,7 @@ uint64_t kp_get_latest_snapshot(kp_kvstore *kv)
 	}
 #ifdef KP_ASSERT
 	if (kv->global_snapshot == 0 || kv->global_snapshot == UINT64_MAX) {  //initial snapshot is 1
+		PM_READ (kv->global_snapshot);
 		kp_die("internal error: snapshot number hit UINT64_MAX!\n");
 	}
 #endif
@@ -5999,7 +6030,9 @@ int kp_version_iter_set(kp_version_iter *v_iter, kp_vt *vt)
 	/* (Preserve v_iter->use_nvm.) */
 	v_iter->vt = vt;
 	v_iter->vt_ver_count = vt->ver_count;  //total number of versions ever added
+	PM_READ (vt->ver_count);
 	v_iter->vt_len = vt->len;              //number of entries stored in vt
+	PM_READ (vt->len);
 	v_iter->vt_idx = UINT64_MAX;           //initial value must be -1!
 	v_iter->is_empty = false;
 	v_iter->is_invalidated = false;
@@ -6220,6 +6253,8 @@ int kp_version_iter_next(kp_version_iter *v_iter, kp_iter_item **item)
 	 * from this function (after getting from the vector? Meh, whatever... */
 	if (v_iter->vt->ver_count != v_iter->vt_ver_count ||
 	    v_iter->vt->len != v_iter->vt_len) {
+		PM_READ (v_iter->vt->ver_count);
+		PM_READ (v_iter->vt->len);
 		kp_debug("version table has changed! Now has ver_count=%ju, "
 				"len=%ju. Returning -2 for invalidated.\n",
 				v_iter->vt->ver_count, v_iter->vt->len);
@@ -6293,6 +6328,7 @@ bool kp_process_commit_entries(void *entry_ptr, void *cr_ptr)
 			"begin_snapshot=%ju\n", entry->key, cr->begin_snapshot);
 #ifdef KP_ASSERT
 	if (cr->state != CREATED) {
+		PM_READ(cr->state);
 		kp_die("cr state is not CREATED, as expected, but rather %s\n",
 				commit_state_to_string(cr->state));
 	}
@@ -6322,6 +6358,7 @@ bool kp_process_commit_entries(void *entry_ptr, void *cr_ptr)
 	}
 #ifdef KP_ASSERT
 	if (len != vt->len) {
+		PM_READ (vt->len);
 		kp_die("mismatched lengths: len=%ju, vt->len=%ju\n", len, vt->len);
 	}
 #endif
@@ -6769,9 +6806,11 @@ void kp_kvpair_destroy(kp_kvpair **pair)
 				ds_state_to_string((*pair)->state));
 
 		if ((*pair)->key) {
+			PM_READ ((*pair)->key);
 			kp_free((void **)&((*pair)->key), (*pair)->use_nvm);
 		}
 		if ((*pair)->value) {
+			PM_READ ((*pair)->value);
 			kp_free((void **)&((*pair)->value), (*pair)->use_nvm);
 		}
 		kp_free((void **)pair, (*pair)->use_nvm);  //flushes and sets *pair = NULL
@@ -6794,6 +6833,7 @@ uint64_t kp_increment_snapshot_mark_in_use(kp_kvstore *kv)
 	kp_mutex_lock("kv->snapshot_lock", kv->snapshot_lock);
 
 	snapshot = kv->global_snapshot;
+	PM_READ (kv->global_snapshot);
 	PM_EQU((kv->global_snapshot), (kv->global_snapshot + 1));
 	if (kv->use_nvm) {  //I think this makes sense... CHECK
 		flush_range(&(kv->global_snapshot), sizeof(uint64_t));
@@ -6963,10 +7003,12 @@ int kp_merge_commit_record(kp_kvstore *kv, kp_commit_record *cr,
 				cr->use_nvm ? "true" : "false");
 	}
 	if (cr->state != CREATED && cr->state != CREATED_OK) {
+		PM_READ(cr->state);
 		kp_die("commit_record has unexpected state=%s\n",
 				commit_state_to_string(cr->state));
 	}
 	if (cr->end_snapshot == UINT64_MAX || cr->end_snapshot == 0) {
+		PM_READ (cr->end_snapshot);
 		kp_die("commit_record has invalid end_snapshot=%ju\n",
 				cr->end_snapshot);
 	}
@@ -7221,6 +7263,7 @@ int kp_merge_commit_record(kp_kvstore *kv, kp_commit_record *cr,
 			 * 
 			 * Whew. */
 			if (cr->state == WAIT_TO_ABORT || cr->state == ABORTED) {
+			PM_READ(cr->state);
 				kp_debug2("while merging our commit [%ju,%ju], somebody "
 						"else has found a conflict and aborted us (our "
 						"state is now %s); breaking out of the merge "
@@ -7480,6 +7523,7 @@ uint64_t kp_append_to_commit_log(kp_kvstore *kv, kp_commit_record *cr)
 		kp_die("check that this is implemented correctly: use_nvm = false!\n");
 	}
 	if (cr->state != CREATED) {
+		PM_READ(cr->state);
 		kp_die("expect cr->state to be CREATED, but it is %s\n",
 				commit_state_to_string(cr->state));
 	}
@@ -7539,6 +7583,7 @@ uint64_t kp_append_to_commit_log(kp_kvstore *kv, kp_commit_record *cr)
 #endif
 
 	if (prev_cr) {
+		PM_READ (prev_cr);
 		kp_debug2("got prev_cr with range=[%ju, %ju] and state=%s\n",
 				prev_cr->begin_snapshot, prev_cr->end_snapshot,
 				commit_state_to_string(prev_cr->state));
@@ -7572,6 +7617,7 @@ uint64_t kp_append_to_commit_log(kp_kvstore *kv, kp_commit_record *cr)
 	 * that are already working: we used to have the flush (with an mfence
 	 * inside) here...). */
 	end_snapshot = kv->global_snapshot;
+	PM_READ (kv->global_snapshot);
 	PM_EQU((kv->global_snapshot), (kv->global_snapshot + 1));
 	kp_mfence();
 	//kp_flush_range(&(kv->global_snapshot), sizeof(uint64_t), kv->use_nvm);
@@ -7651,6 +7697,7 @@ uint64_t kp_append_to_commit_log(kp_kvstore *kv, kp_commit_record *cr)
 	 */
 	if (kv->detect_conflicts) {
 		if (prev_cr) {
+			PM_READ (prev_cr);
 #ifdef KP_ASSERT
 			if (!cr) {
 				kp_die("cr (%p) is unexpectedly NULL\n", cr);
@@ -7730,6 +7777,7 @@ uint64_t kp_append_to_commit_log(kp_kvstore *kv, kp_commit_record *cr)
 	 */
 	if (!kv->detect_conflicts || !prev_cr || prev_cr->state == COMMITTED ||
 			prev_cr->state == ABORTED) {
+		PM_READ (prev_cr);
 		if (!kv->detect_conflicts) {
 			kp_debug2("detect_conflicts is false, so we always start in "
 					"the CREATED_OK state! (our prev_cr is never going "
@@ -7748,6 +7796,7 @@ uint64_t kp_append_to_commit_log(kp_kvstore *kv, kp_commit_record *cr)
 			return UINT64_MAX;
 		}
 		if (prev_cr) {
+			PM_READ (prev_cr);
 			kp_debug2("prev_cr [%ju,%ju] has finalized state=%s, so updated "
 					"just-appended commit record's state to %s\n",
 					prev_cr->begin_snapshot, prev_cr->end_snapshot,
@@ -7882,6 +7931,7 @@ int kp_commit(kp_kvstore *kv, kp_commit_record *cr,
 	/* "When this function [kp_merge_commit_record()] returns, the commit
 	 *  is guaranteed to be either COMMITTED or ABORTED." */
 	if (cr->state != COMMITTED && cr->state != ABORTED) {
+		PM_READ(cr->state);
 		kp_die("failed the guarantee for kp_merge_commit_record(): "
 				"cr->state=%s, but supposed to be COMMITTED or ABORTED\n",
 				commit_state_to_string(cr->state));

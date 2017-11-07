@@ -22,12 +22,23 @@
 #include <assert.h>
 #include <errno.h>
 
+#include "config.h"
+#include "timer.h"
+
 #include "../kp_macros.h"
 #include "../kp_common.h"
 #include "../include/kp_kv_local.h"
 #include "../include/kp_kv_master.h"
 #include "../include/clibpm.h"
 
+void marker_start_counting()
+{
+    __asm__ volatile(".byte 0xbb,0x11,0x22,0x33,0x44,0x64,0x67,0x90" : : : "ebx");
+}
+void marker_stop_counting()
+{
+    __asm__ volatile(".byte 0xbb,0x11,0x22,0x33,0x55,0x64,0x67,0x90" : : : "ebx");
+}
 
 void *pmemalloc_init(const char *path, size_t size);
 
@@ -35,7 +46,6 @@ bool do_conflict_detection = true;
 bool use_durable_ldb = true;
 int WHICH_STORAGE_PLATFORM;
 int WHICH_KEY_VALUE_STORE;
-
 
 /* Switch on which keyvalue store to use */
 #define USE_KP_KV_STORE 0
@@ -2170,7 +2180,7 @@ void parse_arguments(int argc, char *argv[], int *num_threads,
 
         /* Pick a routine that EXISTS but will never be called, VVV IMP !*/
         debug_fd = open("/sys/kernel/debug/tracing/set_ftrace_filter", O_WRONLY);
-        if(debug_fd != -1){ ret = write(debug_fd, "pmfs_mount", 10); } // dummy routine
+        if(debug_fd != -1){ ret = write(debug_fd, "rootfs_mount", 10); } // dummy routine
         else{ ret = -3; goto fail; }
         close(debug_fd);
 
@@ -2187,7 +2197,7 @@ void parse_arguments(int argc, char *argv[], int *num_threads,
         if(debug_fd != -1){ ret = write(debug_fd, "1", 1); }
         else{ ret = -5; goto fail; }
         close(debug_fd);
-
+	marker_start_counting();
       tmp_enable_trace = 1;
         break;
 fail:
